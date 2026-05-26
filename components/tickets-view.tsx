@@ -1,9 +1,8 @@
 "use client";
 import { getUserIcon } from "@/lib/user-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useUser } from "@/lib/user-context";
-import { createClient } from "@/lib/supabase/client";
 
 import {
   DndContext,
@@ -36,7 +35,6 @@ import { CreateTicketModal } from "@/components/create-ticket-modal";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 
 import type {
-  DbTicketRow,
   SortKey,
   Tab,
   Ticket,
@@ -185,7 +183,6 @@ export function TicketsView() {
   const { user } = useUser();
   const { toast } = useToast();
   const isAdmin = user.role === "admin";
-  const supabase = useMemo(() => createClient(), []);
 
   const [tab, setTab] = useState<Tab>("Todos");
   const [sortKey, setSortKey] = useState<SortKey>("default");
@@ -295,63 +292,89 @@ export function TicketsView() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, full_name, avatar_icon")
-      .eq("team_id", teamId)
-      .eq("is_active", true);
-
-    if (error) {
-      console.error("Error fetching team members", error);
+    try {
+      const res = await fetch(`/api/users?team_id=${teamId}`);
+      if (!res.ok) throw new Error("Failed to fetch team members");
+      const raw = await res.json();
+      // API returns camelCase; map back to snake_case for component usage
+      const mapped = (raw ?? []).map((u: Record<string, unknown>) => ({
+        id: u.id,
+        full_name: u.fullName,
+        avatar_icon: u.avatarIcon,
+      }));
+      setAreaMembers(mapped);
+    } catch (err) {
+      console.error("Error fetching team members", err);
       setAreaMembers([]);
-      return;
     }
-
-    setAreaMembers(data ?? []);
   }
 
   async function fetchTickets(teamId: number | null, isAdminUser: boolean) {
     setLoading(true);
     try {
-      let query = supabase
-        .from("tickets")
-        // ✅ Traer teams.icon_id para pintar icono de equipo
-        .select("*, users(full_name, avatar_icon), teams(name, icon_id)")
-        .eq("is_active", true)
-        .order("arrival_time", { ascending: false });
+      const res = await fetch("/api/tickets");
+      if (!res.ok) throw new Error("Failed to fetch tickets");
+      const raw = await res.json();
 
-      if (!isAdminUser) {
-        if (teamId) query = query.eq("team_id", teamId);
-        else query = query.eq("team_id", -1);
-      }
+      // API returns camelCase; map back to snake_case for component usage
+      const rows = (raw ?? []).map(
+        (row: Record<string, unknown> & { users?: Record<string, unknown>; teams?: Record<string, unknown> }) => ({
+          id: row.id,
+          description: row.description,
+          type: row.type,
+          priority: row.priority,
+          status: row.status,
+          arrival_time: row.arrivalTime,
+          max_wait_minutes: row.maxWaitMinutes,
+          team_id: row.teamId,
+          user_id: row.userId,
+          is_active: row.isActive,
+          users: row.users ? { full_name: row.users.fullName, avatar_icon: row.users.avatarIcon } : null,
+          teams: row.teams ? { name: row.teams.name, icon_id: row.teams.icon_id } : null,
+        }),
+      );
 
-      const { data, error } = await query;
-      if (error) {
-        console.error("Error fetching tickets", error);
-        setTickets([]);
-        return;
-      }
+      // Filter client-side based on role
+      const filtered = isAdminUser
+        ? rows
+        : rows.filter((r: Record<string, unknown>) =>
+            teamId ? r.team_id === teamId : r.team_id === -1,
+          );
 
-      const mapped = (data ?? []).map((row: DbTicketRow) => ({
-        id: `TK-${String(row.id).padStart(3, "0")}`,
-        dbId: row.id,
-        description: row.description,
-        type: row.type,
-        priority: row.priority,
-        status: row.status,
-        arrival_time: row.arrival_time,
-        max_wait_minutes: row.max_wait_minutes,
+      // Only keep active tickets
+      const active = filtered.filter((r: Record<string, unknown>) => r.is_active);
 
-        area: row.teams?.name ?? "",
-        team_id: row.team_id,
-        team_icon_id: row.teams?.icon_id ?? null,
+      // Sort by arrival_time descending
+      active.sort(
+        (a: Record<string, unknown>, b: Record<string, unknown>) =>
+          new Date(b.arrival_time as string).getTime() - new Date(a.arrival_time as string).getTime(),
+      );
 
-        usuario: row.users?.full_name ?? "",
-        user_id: row.user_id,
-        user_avatar_icon: row.users?.avatar_icon ?? "Users",
-      }));
+      const mapped = active.map(
+        (row: Record<string, unknown> & { users?: { full_name: string; avatar_icon: string } | null; teams?: { name: string; icon_id: string | null } | null }) => ({
+          id: `TK-${String(row.id).padStart(3, "0")}`,
+          dbId: row.id,
+          description: row.description,
+          type: row.type,
+          priority: row.priority,
+          status: row.status,
+          arrival_time: row.arrival_time,
+          max_wait_minutes: row.max_wait_minutes,
+
+          area: row.teams?.name ?? "",
+          team_id: row.team_id,
+          team_icon_id: row.teams?.icon_id ?? null,
+
+          usuario: row.users?.full_name ?? "",
+          user_id: row.user_id,
+          user_avatar_icon: row.users?.avatar_icon ?? "Users",
+        }),
+      );
 
       setTickets(mapped);
+    } catch (err) {
+      console.error("Error fetching tickets", err);
+      setTickets([]);
     } finally {
       setLoading(false);
     }
@@ -361,31 +384,13 @@ export function TicketsView() {
     setLoading(true);
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      let resolvedUserId = user.id;
-      let resolvedRole = user.role;
-      let resolvedTeamId = myTeamId;
+      const sessionRes = await fetch("/api/auth/get-session");
+      const sessionData = await sessionRes.json();
+      const currentUser = sessionData?.user;
 
-      if (authError) {
-        console.warn("No auth session, using context user", authError);
-      }
-
-      const email = authData?.user?.email ?? user.email;
-      if (email) {
-        const { data: userRow, error: userError } = await supabase
-          .from("users")
-          .select("id, team_id, role")
-          .eq("email", email)
-          .single();
-
-        if (userError) {
-          console.warn("Could not resolve supabase user by email", userError);
-        } else if (userRow) {
-          resolvedUserId = Number(userRow.id);
-          resolvedTeamId = Number(userRow.team_id);
-          resolvedRole = (userRow.role as "admin" | "user") ?? resolvedRole;
-        }
-      }
+      const resolvedUserId = currentUser?.id ?? user.id;
+      const resolvedTeamId = currentUser?.teamId ?? myTeamId;
+      const resolvedRole = currentUser?.role ?? user.role;
 
       setMyUserId(resolvedUserId);
       setMyTeamId(resolvedTeamId);
@@ -421,17 +426,19 @@ export function TicketsView() {
       return;
     }
 
-    const { error } = await supabase
-      .from("tickets")
-      .update({ status: nextStatus })
-      .eq("id", ticket.dbId);
-
-    if (error) {
+    try {
+      const res = await fetch(`/api/tickets/${ticket.dbId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+    } catch (err) {
       toast({
         title: "Error actualizando estado",
         description: "No se pudo actualizar el estado del ticket.",
       });
-      console.error(error);
+      console.error(err);
       return;
     }
 
@@ -459,30 +466,28 @@ export function TicketsView() {
     const arrivalTime = new Date().toISOString();
 
     try {
-      const { data: inserted, error } = await supabase
-        .from("tickets")
-        .insert([
-          {
-            description: data.description,
-            type: data.type,
-            priority: "Media",
-            status: "Pendiente",
-            arrival_time: arrivalTime,
-            max_wait_minutes: data.maxWaitMinutes,
-            user_id: myUserId,
-            team_id: myTeamId,
-            is_active: true,
-          },
-        ])
-        .select("*")
-        .single();
+      const res = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: data.description,
+          type: data.type,
+          priority: "Media",
+          status: "Pendiente",
+          arrival_time: arrivalTime,
+          max_wait_minutes: data.maxWaitMinutes,
+          user_id: myUserId,
+          team_id: myTeamId,
+          is_active: true,
+        }),
+      });
 
-      if (error || !inserted) {
+      if (!res.ok) {
         toast({
           title: "Error al crear ticket",
           description: "No se pudo guardar el ticket.",
         });
-        console.error(error);
+        console.error("Failed to create ticket");
         return;
       }
 
@@ -513,28 +518,30 @@ export function TicketsView() {
 
     setIsDeleting(true);
 
-    const { error } = await supabase
-      .from("tickets")
-      .update({ is_active: false })
-      .eq("id", confirmDelete.dbId);
+    try {
+      const res = await fetch(`/api/tickets/${confirmDelete.dbId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: false }),
+      });
 
-    if (error) {
+      if (!res.ok) throw new Error("Failed to delete ticket");
+
+      setTickets((prev) => prev.filter((t) => t.dbId !== confirmDelete.dbId));
+      toast({
+        title: "Ticket eliminado",
+        description: "Ticket eliminado correctamente.",
+      });
+      setConfirmDelete(null);
+    } catch (err) {
       toast({
         title: "Error al eliminar",
         description: "No se pudo eliminar el ticket.",
       });
-      console.error(error);
+      console.error(err);
+    } finally {
       setIsDeleting(false);
-      return;
     }
-
-    setTickets((prev) => prev.filter((t) => t.dbId !== confirmDelete.dbId));
-    toast({
-      title: "Ticket eliminado",
-      description: "Ticket eliminado correctamente.",
-    });
-    setConfirmDelete(null);
-    setIsDeleting(false);
   };
 
   const SORT_LABELS: Record<SortKey, string> = {

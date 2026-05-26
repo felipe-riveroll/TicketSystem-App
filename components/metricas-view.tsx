@@ -1,30 +1,19 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Ticket, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/user-context";
 
 import type { RangeKey, DataTab, MonthComparison, IssueTypeData, ActiveUsersComparison } from "@/lib/metrics/metrics.types";
-import {
-  fetchTicketsMetrics,
-  fetchUsersMetrics,
-  generateChartDataFromDB,
-  fetchMonthComparison,
-  fetchTopIssueType,
-  fetchNewUsersThisMonth,
-  fetchActiveUsersComparison,
-} from "@/lib/metrics/metrics.service";
 
 import { KpiCard } from "@/components/metrics/kpi-card";
 import { ChartTooltip } from "@/components/metrics/chart-tooltip";
 
 export function MetricasView() {
-  const supabase = useMemo(() => createClient(), []);
   const { user } = useUser();
   const { resolvedTheme } = useTheme();
 
@@ -61,82 +50,21 @@ export function MetricasView() {
         setLoading(true);
         setError(null);
 
-        const { data: userData, error: userError } = await supabase
-          .from("users")
-          .select("team_id")
-          .eq("email", user.email)
-          .single();
+        const sessionRes = await fetch("/api/auth/get-session");
+        const sessionData = await sessionRes.json();
+        const teamId = sessionData?.user?.teamId;
 
-        if (userError) {
-          console.error("Error fetching user team:", userError.message);
-          setError("No se pudo cargar el equipo del usuario");
-          return;
-        }
+        const res = await fetch(`/api/metrics?range=${range}&tab=${dataTab}`);
+        const data = await res.json();
 
-        if (!userData) {
-          setError("Usuario no encontrado");
-          return;
-        }
-
-        const isAdmin = user.role === "admin";
-        const currentTeamId = isAdmin ? undefined : Number(userData.team_id);
-
-        // Fetch basic metrics
-        const ticketsMetrics = await fetchTicketsMetrics(supabase, isAdmin, currentTeamId);
-        setTotalTickets(ticketsMetrics.total);
-        setPendingTickets(ticketsMetrics.pending);
-
-        const usersCount = await fetchUsersMetrics(supabase, isAdmin, currentTeamId);
-        setTotalUsers(usersCount);
-
-        // Fetch real-time KPI data
-        const monthComp = await fetchMonthComparison(supabase, isAdmin, currentTeamId);
-        setMonthComparison(monthComp);
-
-        const activeUsersComp = await fetchActiveUsersComparison(supabase, isAdmin, currentTeamId);
-        setActiveUsersComparison(activeUsersComp);
-
-        const topIssue = await fetchTopIssueType(supabase, isAdmin, currentTeamId);
-        setTopIssueType(topIssue);
-
-        const newUsers = await fetchNewUsersThisMonth(supabase, isAdmin, currentTeamId);
-        setNewUsersThisMonth(newUsers);
-
-        const chartDataResult = await generateChartDataFromDB(
-          supabase,
-          isAdmin,
-          currentTeamId,
-          range,
-          dataTab
-        );
-
-        // Debug (temporal)
-        console.log("dataTab:", dataTab, "range:", range);
-        console.log("chartDataResult length:", (chartDataResult as any[])?.length);
-        console.log("chartDataResult[0]:", (chartDataResult as any[])?.[0]);
-
-        setChartData(chartDataResult as any[]);
-        console.log("dataTab:", dataTab, "range:", range);
-        console.log("chartDataResult length:", (chartDataResult as any[])?.length);
-        console.log("chartDataResult[0]:", (chartDataResult as any[])?.[0]);
-        console.log(
-          "chartDataResult last:",
-          (chartDataResult as any[])?.[(chartDataResult as any[])?.length - 1]
-        );
-        
-        // Debug: Check chart final values vs KPI values
-        if (dataTab === "Usuarios" && chartDataResult && (chartDataResult as any[]).length > 0) {
-          const lastChartPoint = (chartDataResult as any[])[(chartDataResult as any[]).length - 1];
-          const chartTotal = lastChartPoint.active + lastChartPoint.inactive;
-          console.log(
-            `✅ Chart Final - Active: ${lastChartPoint.active}, Inactive: ${lastChartPoint.inactive}, Total: ${chartTotal}`
-          );
-          console.log(`✅ KPI Total Users: ${totalUsers}`);
-          console.log(`✅ KPI Active Users: ${activeUsersComparison.currentMonth}`);
-          console.log(
-            `${chartTotal === totalUsers ? "✅ MATCH" : "❌ MISMATCH"}: Chart Total (${chartTotal}) vs KPI Total (${totalUsers})`
-          );
-        }
+        setTotalTickets(data.ticketsMetrics.total);
+        setPendingTickets(data.ticketsMetrics.pending);
+        setTotalUsers(data.usersMetrics);
+        setMonthComparison(data.monthComparison);
+        setTopIssueType(data.topIssue);
+        setNewUsersThisMonth(data.newUsersThisMonth);
+        setActiveUsersComparison(data.activeUsersComparison);
+        setChartData(data.chartData);
       } catch (err) {
         console.error("Error loading metrics:", err);
         setError("Error al cargar las métricas. Revisa la consola.");

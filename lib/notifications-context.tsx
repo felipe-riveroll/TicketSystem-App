@@ -6,12 +6,11 @@ import {
   useEffect,
   useState,
   useCallback,
-  useMemo,
   useRef,
   type ReactNode,
 } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/lib/user-context";
+
 
 /* ─── ID fijo del equipo de Sistemas ─────────────────────────────────── */
 const SISTEMAS_TEAM_ID = 2;
@@ -94,7 +93,6 @@ function playNotificationSound() {
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useUser();
   const isAdmin = user.role === "admin";
-  const supabase = useMemo(() => createClient(), []);
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -117,35 +115,24 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("notifications")
-        // ✅ aquí está el cambio importante
-        .select("*, users(full_name, avatar_icon), teams(name, icon_id)")
-        .eq("team_id", SISTEMAS_TEAM_ID)
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-      if (error) {
-        console.error("Error fetching notifications", error);
-        return;
-      }
+      const res = await fetch("/api/notifications");
+      const data = await res.json();
 
       const mapped: Notification[] = (data ?? []).map((row: any) => ({
         id: row.id,
-        ticket_id: row.ticket_id,
-        team_id: row.team_id,
-        user_id: row.user_id,
+        ticket_id: row.ticketId,
+        team_id: row.teamId,
+        user_id: row.userId,
         type: row.type,
         message: row.message,
-        is_read: row.is_read,
-        created_at: row.created_at,
+        is_read: row.isRead,
+        created_at: row.createdAt,
 
-        user_name: row.users?.full_name ?? "Usuario desconocido",
+        user_name: row.users?.fullName ?? "Usuario desconocido",
         team_name: row.teams?.name ?? "",
 
-        // ✅ nuevos
-        user_avatar_icon: row.users?.avatar_icon ?? "Users",
-        team_icon_id: row.teams?.icon_id ?? null,
+        user_avatar_icon: row.users?.avatarIcon ?? "Users",
+        team_icon_id: row.teams?.iconId ?? null,
       }));
 
       if (isFirstLoadRef.current) {
@@ -169,73 +156,63 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, supabase, soundEnabled]);
+  }, [isAdmin, soundEnabled]);
 
   const markAsRead = useCallback(
     async (id: number) => {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", id);
-
-      if (error) {
-        console.error("Error marking notification as read", error);
-        return;
-      }
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
 
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
     },
-    [supabase]
+    []
   );
 
   const markAllAsRead = useCallback(async () => {
     const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
     if (unreadIds.length === 0) return;
 
-    const { error } = await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .in("id", unreadIds);
-
-    if (error) {
-      console.error("Error marking all as read", error);
-      return;
-    }
+    await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: unreadIds }),
+    });
 
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-  }, [notifications, supabase]);
+  }, [notifications]);
 
   const deleteNotification = useCallback(
     async (id: number) => {
-      const { error } = await supabase.from("notifications").delete().eq("id", id);
-
-      if (error) {
-        console.error("Error deleting notification", error);
-        return;
-      }
+      await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
 
       setNotifications((prev) => prev.filter((n) => n.id !== id));
       knownIdsRef.current.delete(id);
     },
-    [supabase]
+    []
   );
 
   const clearAll = useCallback(async () => {
     const ids = notifications.map((n) => n.id);
     if (ids.length === 0) return;
 
-    const { error } = await supabase.from("notifications").delete().in("id", ids);
-
-    if (error) {
-      console.error("Error clearing all notifications", error);
-      return;
-    }
+    await fetch("/api/notifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
 
     setNotifications([]);
     knownIdsRef.current.clear();
-  }, [notifications, supabase]);
+  }, [notifications]);
 
   useEffect(() => {
     if (!isAdmin) return;

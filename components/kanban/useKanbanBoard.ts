@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useSensor,
   useSensors,
@@ -12,20 +12,18 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 
 import { useUser } from "@/lib/user-context";
-import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 import type {
   KanbanColumn,
   KanbanMember,
   KanbanTask,
-  IconUserId,
 } from "./kanban.types";
+import type { IconUserId } from "@/lib/user-context";
 import { COLUMNS } from "./kanban.config";
 
 export function useKanbanBoard() {
   const { user } = useUser();
-  const supabase = useMemo(() => createClient(), []);
   const { toast } = useToast();
 
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
@@ -52,30 +50,25 @@ export function useKanbanBoard() {
   async function fetchTeamData() {
     setLoading(true);
     try {
-      const email = user.email;
-      const { data: userRow, error: userError } = await supabase
-        .from("users")
-        .select("id, team_id, role")
-        .eq("email", email)
-        .single();
+      const sessionRes = await fetch("/api/auth/get-session");
+      const sessionData = await sessionRes.json();
+      const currentUser = sessionData?.user;
 
-      if (userError || !userRow) {
-        console.warn("Could not resolve user", userError);
+      if (!currentUser) {
+        console.warn("Could not resolve user from session");
         return;
       }
 
-      const userId = Number(userRow.id);
-      const teamId = Number(userRow.team_id);
+      const userId = Number(currentUser.id);
+      const teamId = Number(currentUser.teamId);
       setMyUserId(userId);
       setMyTeamId(teamId);
 
-      const { data: teamRow } = await supabase
-        .from("teams")
-        .select("name")
-        .eq("id", teamId)
-        .single();
+      const teamRes = await fetch("/api/teams");
+      const allTeams = await teamRes.json();
+      const team = allTeams.find((t: any) => t.id === teamId);
 
-      if (teamRow) setTeamName(teamRow.name ?? "");
+      if (team) setTeamName(team.name ?? "");
 
       await fetchMembers(teamId);
       await fetchTasks(teamId);
@@ -85,51 +78,43 @@ export function useKanbanBoard() {
   }
 
   async function fetchMembers(teamId: number) {
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, full_name, avatar_icon")
-      .eq("team_id", teamId)
-      .eq("is_active", true);
+    try {
+      const res = await fetch(`/api/users?team_id=${teamId}`);
+      const data = await res.json();
 
-    if (error) {
-      console.error("Error fetching team members", error);
-      return;
+      setMembers(
+        (data ?? []).map((u: any) => ({
+          id: Number(u.id),
+          full_name: u.fullName ?? "",
+          avatar_icon: (u.avatarIcon as IconUserId) || "Users",
+        }))
+      );
+    } catch (err) {
+      console.error("Error fetching team members", err);
     }
-
-    setMembers(
-      (data ?? []).map((m) => ({
-        id: Number(m.id),
-        full_name: m.full_name ?? "",
-        avatar_icon: (m.avatar_icon as IconUserId) || "Users",
-      }))
-    );
   }
 
   async function fetchTasks(teamId: number) {
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("team_id", teamId)
-      .order("start_date", { ascending: false });
+    try {
+      const res = await fetch(`/api/tasks?team_id=${teamId}`);
+      const data = await res.json();
 
-    if (error) {
-      console.error("Error fetching tasks", error);
-      return;
+      const mapped = (data ?? []).map((row: any) => ({
+        id: `TSK-${String(row.id).padStart(4, "0")}`,
+        dbId: row.id,
+        title: row.title,
+        description: row.description,
+        status: row.status,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        assigned_to: row.assigned_to ?? [],
+        team_id: row.team_id,
+      }));
+
+      setTasks(mapped);
+    } catch (err) {
+      console.error("Error fetching tasks", err);
     }
-
-    const mapped = (data ?? []).map((row) => ({
-      id: `TSK-${String(row.id).padStart(4, "0")}`,
-      dbId: row.id,
-      title: row.title,
-      description: row.description,
-      status: row.status,
-      start_date: row.start_date,
-      end_date: row.end_date,
-      assigned_to: row.assigned_to ?? [],
-      team_id: row.team_id,
-    }));
-
-    setTasks(mapped);
   }
 
   useEffect(() => {
@@ -179,13 +164,14 @@ export function useKanbanBoard() {
     if (!task) return;
 
     try {
-      const { error } = await supabase
-        .from("tasks")
-        .update({ status: task.status })
-        .eq("id", task.dbId);
+      const res = await fetch(`/api/tasks/${task.dbId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: task.status }),
+      });
 
-      if (error) {
-        console.error("Error updating task status:", error);
+      if (!res.ok) {
+        console.error("Error updating task status");
         toast({
           title: "Error al actualizar",
           description: "No se pudo cambiar el estado de la tarea.",
@@ -223,23 +209,26 @@ export function useKanbanBoard() {
   async function handleAddTask(task: Omit<KanbanTask, "id" | "dbId">) {
     if (!myTeamId) return;
 
-    const { error } = await supabase.from("tasks").insert([
-      {
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         title: task.title,
         description: task.description,
         status: task.status,
-        start_date: new Date().toISOString(),
         end_date: task.end_date,
         assigned_to: task.assigned_to,
         team_id: myTeamId,
-      },
-    ]);
+      }),
+    });
 
-    if (error) {
+    if (!res.ok) {
       toast({ title: "Error al crear tarea", description: "No se pudo guardar" });
-      console.error(error);
+      console.error("Error creating task");
       return;
     }
+
+    const newTask = await res.json();
 
     toast({ title: "Tarea creada", description: "Se agregó correctamente." });
     setShowCreate(false);
@@ -247,20 +236,21 @@ export function useKanbanBoard() {
   }
 
   async function handleUpdateTask(task: KanbanTask) {
-    const { error } = await supabase
-      .from("tasks")
-      .update({
+    const res = await fetch(`/api/tasks/${task.dbId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         title: task.title,
         description: task.description,
         status: task.status,
         end_date: task.end_date,
         assigned_to: task.assigned_to,
-      })
-      .eq("id", task.dbId);
+      }),
+    });
 
-    if (error) {
+    if (!res.ok) {
       toast({ title: "Error al actualizar", description: "No se pudo guardar." });
-      console.error(error);
+      console.error("Error updating task");
       return;
     }
 
@@ -281,9 +271,9 @@ export function useKanbanBoard() {
 
     setIsDeletingTask(true);
 
-    const { error } = await supabase.from("tasks").delete().eq("id", task.dbId);
+    const res = await fetch(`/api/tasks/${task.dbId}`, { method: "DELETE" });
 
-    if (error) {
+    if (!res.ok) {
       toast({ title: "Error al eliminar", description: "No se pudo eliminar." });
       setIsDeletingTask(false);
       setConfirmDeleteTask(null);
@@ -306,13 +296,14 @@ export function useKanbanBoard() {
       prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t))
     );
 
-    const { error } = await supabase
-      .from("tasks")
-      .update({ status: nextStatus })
-      .eq("id", task.dbId);
+    const res = await fetch(`/api/tasks/${task.dbId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    });
 
-    if (error) {
-      console.error("Error updating task status (buttons):", error);
+    if (!res.ok) {
+      console.error("Error updating task status (buttons)");
       toast({
         title: "Error al actualizar",
         description: "No se pudo cambiar el estado de la tarea.",

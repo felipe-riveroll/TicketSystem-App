@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+*.md
+copia_desarrollo.sql
+copia_desarrollo.sql:Zone.Identifier
+.env*.local
+drizzle/

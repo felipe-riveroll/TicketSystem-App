@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { signOut } from "@/lib/auth-client";
 
 export type UserRole = "admin" | "user";
 export type IconUserId =
@@ -88,8 +88,7 @@ export function UserProvider({
 
   const logout = async () => {
     try {
-      const supabase = createClient();
-      await supabase.auth.signOut();
+      await signOut();
     } catch (error) {
       console.error("Error during sign out:", error);
     } finally {

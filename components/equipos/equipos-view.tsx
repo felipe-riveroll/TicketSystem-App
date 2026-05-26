@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useUser, type IconUserId } from "@/lib/user-context";
@@ -20,8 +19,6 @@ export function EquiposView() {
   const { user, deactivateUser } = useUser();
   const { toast } = useToast();
   const isAdmin = user.role === "admin";
-  const supabase = useMemo(() => createClient(), []);
-
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
   const [activeTeamId, setActiveTeamId] = useState<number | null>(null);
@@ -46,22 +43,31 @@ export function EquiposView() {
   const refreshTeams = async () => {
     setIsLoadingTeams(true);
     try {
-      const [teamsResult, usersResult] = await Promise.all([
-        supabase.from("teams").select("id, name, icon_id").eq("is_active", true),
-        supabase.from("users").select("id, full_name, email, role, avatar_icon, team_id").eq("is_active", true),
+      const [teamsRes, usersRes] = await Promise.all([
+        fetch("/api/teams"),
+        fetch("/api/users"),
       ]);
+      const teamsData = await teamsRes.json();
+      const usersData = await usersRes.json();
 
-      if (teamsResult.error) {
-        console.error("Error al obtener equipos", teamsResult.error);
-        return;
-      }
-      if (usersResult.error) {
-        console.error("Error al obtener miembros", usersResult.error);
-        return;
-      }
+      const mappedTeams = teamsData.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        icon_id: t.iconId,
+        is_active: t.isActive,
+      }));
+
+      const mappedUsers = usersData.map((u: any) => ({
+        id: u.id,
+        full_name: u.fullName,
+        email: u.email,
+        role: u.role,
+        avatar_icon: u.avatarIcon,
+        team_id: u.teamId,
+      }));
 
       const membersByTeam = new Map<number, TeamMember[]>();
-      usersResult.data?.forEach((userRow) => {
+      mappedUsers.forEach((userRow: any) => {
         if (!userRow.team_id) return;
         const existing = membersByTeam.get(userRow.team_id) ?? [];
         membersByTeam.set(userRow.team_id, [
@@ -79,8 +85,8 @@ export function EquiposView() {
         ]);
       });
 
-      if (teamsResult.data) {
-        const normalized: Team[] = teamsResult.data.map((teamRow) => ({
+      if (mappedTeams) {
+        const normalized: Team[] = mappedTeams.map((teamRow: any) => ({
           id: teamRow.id,
           name: teamRow.name ?? "",
           area: teamRow.name ?? "",
@@ -101,7 +107,7 @@ export function EquiposView() {
   useEffect(() => {
     refreshTeams();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
+  }, []);
 
   if (!isAdmin) {
     return (
@@ -128,11 +134,11 @@ export function EquiposView() {
     } as Team);
 
   async function deleteUser(userId: string | number) {
-    const { error } = await supabase.from("users").update({ is_active: false }).eq("id", userId);
-    if (error) {
-      console.error("Error al desactivar usuario", error);
-      throw error;
-    }
+    await fetch(`/api/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: false }),
+    });
   }
 
   async function handleUpdateMember(
@@ -142,15 +148,16 @@ export function EquiposView() {
     memberIcon: IconUserId,
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ full_name: memberName, email: memberEmail, avatar_icon: memberIcon })
-        .eq("id", userId)
-        .select();
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ full_name: memberName, email: memberEmail, avatar_icon: memberIcon }),
+      });
 
-      if (error) {
-        console.error("Error al actualizar miembro", error);
-        if ((error as any).code === "23505") return { success: false, message: "Este correo ya está registrado en otro usuario." };
+      if (!res.ok) {
+        const result = await res.json();
+        console.error("Error al actualizar miembro", result);
+        if (result?.code === "23505") return { success: false, message: "Este correo ya está registrado en otro usuario." };
         return { success: false, message: "Error al actualizar miembro. Revisa la consola." };
       }
 
@@ -252,18 +259,22 @@ export function EquiposView() {
     setIsDeletingTeam(true);
 
     try {
-      const { error: teamError } = await supabase.from("teams").update({ is_active: false }).eq("id", confirmDeleteTeam.id);
-      if (teamError) {
-        console.error("Error al desactivar equipo", teamError);
-        toast({ title: "Error al eliminar equipo", description: "No se pudo eliminar el equipo.", variant: "destructive" });
-        return;
-      }
+      await fetch(`/api/teams/${confirmDeleteTeam.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: false }),
+      });
 
       const activeMembers = confirmDeleteTeam.members.filter((m) => m.isActive);
       if (activeMembers.length > 0) {
         const memberIds = activeMembers.map((m) => m.id);
-        const { error: membersError } = await supabase.from("users").update({ is_active: false }).in("id", memberIds);
-        if (membersError) console.error("Error al desactivar miembros del equipo", membersError);
+        await Promise.all(memberIds.map(id =>
+          fetch(`/api/users/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: false }),
+          })
+        ));
 
         activeMembers.forEach((m) => {
           const parsed = typeof m.id === "number" ? m.id : Number(m.id);

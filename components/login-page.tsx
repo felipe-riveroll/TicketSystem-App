@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, ArrowRight, Users, Ticket } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { signIn } from "@/lib/auth-client";
 import Image from "next/image";
 import { useTheme } from "next-themes";
 
@@ -26,47 +26,36 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await signIn.email({
         email: identifier.trim().toLowerCase(),
         password,
       });
 
       if (error) {
-        if (error.message.toLowerCase().includes("confirm") || error.message.toLowerCase().includes("confirmar")) {
-          setError("Por favor, confirma tu correo antes de entrar");
-        } else {
-          setError(error.message || "Credenciales inválidas");
-        }
+        setError(error.message || "Credenciales inválidas");
         setLoading(false);
         return;
       }
 
-      if (!data?.session || !data.session.user) {
+      if (!data?.user) {
         setError("No se pudo iniciar sesión. Intenta de nuevo.");
         setLoading(false);
         return;
       }
 
-      const userEmail = data.session.user.email ?? identifier.trim().toLowerCase();
-      const { data: profile, error: profileError } = await supabase
-        .from("users")
-        .select("id, full_name, avatar_icon, role, email, is_active")
-        .eq("email", userEmail)
-        .single();
+      const sessionRes = await fetch("/api/auth/get-session");
+      const sessionData = await sessionRes.json();
+      const profile = sessionData?.user;
 
-      if (profileError || !profile) {
+      if (!profile) {
         setError("No se pudo cargar el perfil del usuario.");
         setLoading(false);
         return;
       }
 
-      // Check if user account is active
-      if (!profile.is_active) {
+      if (profile.is_active === false) {
         setError("Tu cuenta ha sido desactivada. Contacta al administrador.");
         setLoading(false);
-        // Sign out the user since they shouldn't be logged in
-        await supabase.auth.signOut();
         return;
       }
 

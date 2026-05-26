@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const session = await auth.api.getSession({ headers: await headers() });
 
-  if (!authData?.user?.email) {
+  if (!session?.user) {
     redirect("/login");
   }
 

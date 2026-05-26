@@ -3,7 +3,6 @@
 import { USER_ICON_MAP, getUserIcon } from "@/lib/user-icons";
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { useUser, type IconUserId } from "@/lib/user-context";
 import {
   AlertDialog,
@@ -43,13 +42,13 @@ export function UserAvatarEditor({ showTitle = true }: UserAvatarEditorProps) {
   async function confirmIconUpdate() {
     if (!selectedIcon) return;
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("users")
-        .update({ avatar_icon: selectedIcon })
-        .eq("id", user.id);
+      const res = await fetch("/api/user/avatar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_icon: selectedIcon }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to update avatar");
 
       updateUser(user.id, { iconId: selectedIcon });
       setConfirmEditOpen(false);

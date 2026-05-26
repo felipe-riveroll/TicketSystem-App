@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { Sidebar } from "@/components/sidebar";
 import {
   UserProvider,
@@ -7,46 +8,36 @@ import {
   type IconUserId,
 } from "@/lib/user-context";
 import { NotificationsProvider } from "@/lib/notifications-context";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const session = await auth.api.getSession({ headers: await headers() });
 
-  if (!authData?.user?.email) {
+  if (!session?.user) {
     redirect("/login");
   }
 
-  const userEmail = authData.user.email;
-  const { data: profile, error: profileError } = await supabase
-    .from("users")
-    .select("id, full_name, avatar_icon, role, email, is_active")
-    .eq("email", userEmail)
-    .single();
+  const user = session.user as any;
 
-  if (profileError || !profile) {
-    console.error("Unable to load dashboard profile:", profileError);
-    redirect("/login");
-  }
-
-  // Check if user account is still active
-  if (!profile.is_active) {
-    await supabase.auth.signOut();
+  if (user.isActive === false) {
     redirect("/login");
   }
 
   const initialUser: UserProfile = {
-    id: Number(profile.id),
-    authId: authData.user.id,
-    name: profile.full_name ?? profile.email,
-    email: profile.email,
-    role: (profile.role as UserRole) ?? "user",
-    iconId: (profile.avatar_icon as IconUserId) || "Users",
-    isActive: profile.is_active,
+    id: Number(user.id),
+    name: user.fullName ?? user.email,
+    email: user.email,
+    role: (user.role as UserRole) ?? "user",
+    iconId: (user.avatarIcon as IconUserId) || "Users",
+    team_id: user.teamId,
+    isActive: user.isActive ?? true,
     deletedAt: null,
   };
 

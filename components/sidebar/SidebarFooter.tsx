@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, MoreVertical, User } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/client";
+import { signOut } from "@/lib/auth-client";
 import { useUser } from "@/lib/user-context";
 import { getUserIcon } from "@/lib/user-icons";
 
@@ -28,8 +28,7 @@ export function SidebarFooter() {
 
   async function confirmLogout() {
     try {
-      const supabase = createClient();
-      await supabase.auth.signOut();
+      await signOut();
     } catch (error) {
       console.error("Error during logout:", error);
     } finally {

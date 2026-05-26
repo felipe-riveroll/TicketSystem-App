@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Lock, Mail, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { useUser } from "@/lib/user-context";
-import { createClient } from "@/lib/supabase/client";
+import { changePassword, signOut } from "@/lib/auth-client";
 import { UserAvatarEditor } from "@/components/user-avatar-editor";
 import { getUserIcon } from "@/lib/user-icons";
 import {
@@ -47,24 +47,9 @@ export default function ConfiguracionView() {
 
   async function fetchTeamName() {
     try {
-      const supabase = createClient();
-      if (!user.id) return;
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("team_id")
-        .eq("id", user.id)
-        .single();
-
-      if (userData?.team_id) {
-        const { data: teamData } = await supabase
-          .from("teams")
-          .select("name")
-          .eq("id", userData.team_id)
-          .single();
-
-        if (teamData) setTeamName(teamData.name);
-      }
+      const res = await fetch("/api/user/team");
+      const data = await res.json();
+      if (data.teamName) setTeamName(data.teamName);
     } catch (error) {
       console.error("Error fetching team name:", error);
     }
@@ -101,30 +86,19 @@ export default function ConfiguracionView() {
     setPasswordLoading(true);
 
     try {
-      const supabase = createClient();
-
-      // 1) Re-autenticación: valida la contraseña actual
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword,
+      const { error: changeError } = await changePassword({
+        newPassword,
+        currentPassword,
+        revokeOtherSessions: true,
       });
 
-      if (signInError) {
-        setPasswordError("La contraseña actual es incorrecta.");
+      if (changeError) {
+        setPasswordError(changeError.message || "Error al cambiar la contraseña.");
         return;
       }
 
-      // 2) Actualiza password en Supabase Auth (auth.users)
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+      await signOut();
 
-      if (updateError) throw updateError;
-
-      // 3) Cierra sesión y fuerza re-login
-      await supabase.auth.signOut();
-
-      // Limpieza local
       setChangePasswordOpen(false);
       setCurrentPassword("");
       setNewPassword("");

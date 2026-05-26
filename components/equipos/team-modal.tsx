@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { motion } from "framer-motion";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { getTeamIcon, type TeamIconId } from "@/lib/team-icons";
 import type { Team } from "./types";
@@ -23,7 +22,6 @@ export function TeamModal({
   const [selectedIcon, setSelectedIcon] = useState<TeamIconId>(initial?.iconId ?? "BadgeDollarSign");
   const [isSaving, setIsSaving] = useState(false);
 
-  const supabase = useMemo(() => createClient(), []);
   const isEdit = !!initial;
 
   async function handleSubmit() {
@@ -32,25 +30,17 @@ export function TeamModal({
     setIsSaving(true);
     try {
       if (isEdit && initial?.id != null) {
-        const { error } = await supabase
-          .from("teams")
-          .update({ name: `Equipo de ${teamName}`, icon_id: selectedIcon })
-          .eq("id", initial.id)
-          .eq("is_active", true);
-
-        if (error) {
-          console.error("Error al actualizar el equipo", error);
-          return;
-        }
+        await fetch(`/api/teams/${initial.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Equipo de " + teamName, icon_id: selectedIcon }),
+        });
       } else {
-        const { error } = await supabase
-          .from("teams")
-          .insert([{ name: `Equipo de ${teamName}`, icon_id: selectedIcon, is_active: true }]);
-
-        if (error) {
-          console.error("Error al crear el equipo", error);
-          return;
-        }
+        await fetch("/api/teams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Equipo de " + teamName, icon_id: selectedIcon }),
+        });
       }
 
       await onSave();
