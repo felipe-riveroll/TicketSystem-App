@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
-import { hash } from "bcryptjs";
+import { users, accounts } from "@/lib/db/schema";
+import { hashPassword } from "better-auth/crypto";
 
 function generateRandomPassword(length = 8) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
@@ -28,16 +28,26 @@ export async function POST(req: NextRequest) {
     }
 
     const generatedPassword = generateRandomPassword(8);
-    const hashedPassword = await hash(generatedPassword, 10);
+    const hashedPassword = await hashPassword(generatedPassword);
+
+    const userId = Date.now().toString();
 
     await db.insert(users).values({
-      fullName: full_name,
+      id: userId,
+      name: full_name,
       email,
-      password: hashedPassword,
       avatarIcon: avatar_icon,
       teamId: team_id,
       role: "user",
       isActive: true,
+    });
+
+    await db.insert(accounts).values({
+      id: `account-${userId}`,
+      accountId: email,
+      providerId: "credential",
+      userId: userId,
+      password: hashedPassword,
     });
 
     return NextResponse.json({

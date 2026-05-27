@@ -1,9 +1,28 @@
-import { db } from "@/lib/db";
-import { users, teams, tickets, tasks, notifications } from "@/lib/db/schema";
-import { hash } from "bcryptjs";
+import { config } from "dotenv";
+config({ path: ".env.local" });
 
 async function seed() {
+  const { db } = await import("@/lib/db");
+  const { users, teams, tickets, tasks, notifications, accounts } = await import("@/lib/db/schema");
+  const { hashPassword } = await import("better-auth/crypto");
+  const { sql } = await import("drizzle-orm");
+
   console.log("Seeding database...");
+
+  // ── Clean existing data ──────────────────────────────────────────────────
+  console.log("Cleaning existing data...");
+  await db.execute(sql`DELETE FROM notifications`);
+  await db.execute(sql`DELETE FROM tasks`);
+  await db.execute(sql`DELETE FROM tickets`);
+  await db.execute(sql`DELETE FROM accounts`);
+  await db.execute(sql`DELETE FROM sessions`);
+  await db.execute(sql`DELETE FROM users`);
+  await db.execute(sql`DELETE FROM teams`);
+  await db.execute(sql`ALTER SEQUENCE teams_id_seq RESTART WITH 1`);
+  await db.execute(sql`ALTER SEQUENCE tickets_id_seq RESTART WITH 1`);
+  await db.execute(sql`ALTER SEQUENCE tasks_id_seq RESTART WITH 1`);
+  await db.execute(sql`ALTER SEQUENCE notifications_id_seq RESTART WITH 1`);
+  console.log("Cleaned!");
 
   // ── Teams ────────────────────────────────────────────────────────────────
   const teamsData = [
@@ -22,35 +41,41 @@ async function seed() {
   }
   console.log(`Inserted ${teamsData.length} teams`);
 
-  // ── Users ────────────────────────────────────────────────────────────────
-  // All existing users have null passwords - set temp passwords
-  const tempPassword = await hash("Asiatech2026!", 10);
+  // ── Users + Accounts ─────────────────────────────────────────────────────
+  const tempPassword = await hashPassword("Asiatech2026!");
 
   const usersData = [
-    { id: 1, fullName: "Marco Montiel", email: "marcmontiel98@gmail.com", password: tempPassword, role: "user", avatarIcon: "Sticker", teamId: 2, isActive: false },
-    { id: 3, fullName: "Asiatech", email: "asiatechsistemas31@gmail.com", password: tempPassword, role: "admin", avatarIcon: "Biohazard", teamId: 2, isActive: true },
-    { id: 4, fullName: "Pedro Mateos", email: "mateosp2310@gmail.com", password: tempPassword, role: "admin", avatarIcon: "Fish", teamId: 2, isActive: true },
-    { id: 5, fullName: "Guillermo Vázquez", email: "olivamemo689@gmail.com", password: tempPassword, role: "admin", avatarIcon: "Sticker", teamId: 2, isActive: true },
-    { id: 6, fullName: "Marco Montiel", email: "lucasmontiel358@gmail.com", password: tempPassword, role: "admin", avatarIcon: "Sticker", teamId: 2, isActive: true },
-    { id: 7, fullName: "Daniela Zarate", email: "danizaratec@gmail.com", password: tempPassword, role: "user", avatarIcon: "Rabbit", teamId: 3, isActive: true },
-    { id: 8, fullName: "Fatima Aca", email: "fatimaaca15@gmail.com", password: tempPassword, role: "user", avatarIcon: "Sticker", teamId: 3, isActive: true },
-    { id: 9, fullName: "Carlos Benitez", email: "carlosbenitez1661@gmail.com", password: tempPassword, role: "user", avatarIcon: "Donut", teamId: 3, isActive: true },
-    { id: 10, fullName: "Sandra Vergara", email: "sandrvv18@gmail.com", password: tempPassword, role: "user", avatarIcon: "Cat", teamId: 3, isActive: true },
-    { id: 11, fullName: "Karen Ramirez", email: "akramirezmtz22@gmail.com", password: tempPassword, role: "user", avatarIcon: "Rose", teamId: 1, isActive: true },
-    { id: 12, fullName: "Alexis Coatl", email: "tepoxa09@gmail.com", password: tempPassword, role: "user", avatarIcon: "Biohazard", teamId: 1, isActive: true },
-    { id: 13, fullName: "Rebeca Vergara", email: "rhasiatech1@gmail.com", password: tempPassword, role: "user", avatarIcon: "VenetianMask", teamId: 5, isActive: false },
-    { id: 14, fullName: "Angel Mendoza", email: "nightmareangel730@gmail.com", password: tempPassword, role: "user", avatarIcon: "Ghost", teamId: 1, isActive: true },
-    { id: 15, fullName: "Alejandro Perez", email: "alejandroperezlopez449@gmail.com", password: tempPassword, role: "user", avatarIcon: "HandMetal", teamId: 5, isActive: true },
-    { id: 16, fullName: "Emilio Rosas", email: "emiliomunoz1245@gmail.com", password: tempPassword, role: "user", avatarIcon: "Donut", teamId: 5, isActive: false },
-    { id: 17, fullName: "Michelle Flores", email: "michflores84535@gmail.com", password: tempPassword, role: "user", avatarIcon: "Cat", teamId: 5, isActive: false },
-    { id: 18, fullName: "Rebeca Miranda", email: "marketing@asiatech.com.mx", password: tempPassword, role: "user", avatarIcon: "VenetianMask", teamId: 5, isActive: true },
-    { id: 19, fullName: "Manuel Escorza", email: "vmescorza@hotmail.com", password: tempPassword, role: "user", avatarIcon: "Fish", teamId: 5, isActive: true },
+    { id: "1", name: "Marco Montiel", email: "marcmontiel98@gmail.com", role: "user", avatarIcon: "Sticker", teamId: 2, isActive: false },
+    { id: "3", name: "Asiatech", email: "asiatechsistemas31@gmail.com", role: "admin", avatarIcon: "Biohazard", teamId: 2, isActive: true },
+    { id: "4", name: "Pedro Mateos", email: "mateosp2310@gmail.com", role: "admin", avatarIcon: "Fish", teamId: 2, isActive: true },
+    { id: "5", name: "Guillermo Vázquez", email: "olivamemo689@gmail.com", role: "admin", avatarIcon: "Sticker", teamId: 2, isActive: true },
+    { id: "6", name: "Marco Montiel", email: "lucasmontiel358@gmail.com", role: "admin", avatarIcon: "Sticker", teamId: 2, isActive: true },
+    { id: "7", name: "Daniela Zarate", email: "danizaratec@gmail.com", role: "user", avatarIcon: "Rabbit", teamId: 3, isActive: true },
+    { id: "8", name: "Fatima Aca", email: "fatimaaca15@gmail.com", role: "user", avatarIcon: "Sticker", teamId: 3, isActive: true },
+    { id: "9", name: "Carlos Benitez", email: "carlosbenitez1661@gmail.com", role: "user", avatarIcon: "Donut", teamId: 3, isActive: true },
+    { id: "10", name: "Sandra Vergara", email: "sandrvv18@gmail.com", role: "user", avatarIcon: "Cat", teamId: 3, isActive: true },
+    { id: "11", name: "Karen Ramirez", email: "akramirezmtz22@gmail.com", role: "user", avatarIcon: "Rose", teamId: 1, isActive: true },
+    { id: "12", name: "Alexis Coatl", email: "tepoxa09@gmail.com", role: "user", avatarIcon: "Biohazard", teamId: 1, isActive: true },
+    { id: "13", name: "Rebeca Vergara", email: "rhasiatech1@gmail.com", role: "user", avatarIcon: "VenetianMask", teamId: 5, isActive: false },
+    { id: "14", name: "Angel Mendoza", email: "nightmareangel730@gmail.com", role: "user", avatarIcon: "Ghost", teamId: 1, isActive: true },
+    { id: "15", name: "Alejandro Perez", email: "alejandroperezlopez449@gmail.com", role: "user", avatarIcon: "HandMetal", teamId: 5, isActive: true },
+    { id: "16", name: "Emilio Rosas", email: "emiliomunoz1245@gmail.com", role: "user", avatarIcon: "Donut", teamId: 5, isActive: false },
+    { id: "17", name: "Michelle Flores", email: "michflores84535@gmail.com", role: "user", avatarIcon: "Cat", teamId: 5, isActive: false },
+    { id: "18", name: "Rebeca Miranda", email: "marketing@asiatech.com.mx", role: "user", avatarIcon: "VenetianMask", teamId: 5, isActive: true },
+    { id: "19", name: "Manuel Escorza", email: "vmescorza@hotmail.com", role: "user", avatarIcon: "Fish", teamId: 5, isActive: true },
   ];
 
   for (const user of usersData) {
     await db.insert(users).values(user).onConflictDoNothing();
+    await db.insert(accounts).values({
+      id: `account-${user.id}`,
+      accountId: user.email,
+      providerId: "credential",
+      userId: user.id,
+      password: tempPassword,
+    }).onConflictDoNothing();
   }
-  console.log(`Inserted ${usersData.length} users`);
+  console.log(`Inserted ${usersData.length} users with accounts`);
   console.log("All users have temp password: Asiatech2026!");
 
   // ── Tickets ──────────────────────────────────────────────────────────────
@@ -150,9 +175,7 @@ async function seed() {
   console.log(`Inserted ${notifsData.length} notifications`);
 
   // ── Reset sequences ──────────────────────────────────────────────────────
-  const { sql } = await import("drizzle-orm");
   await db.execute(sql`SELECT setval('teams_id_seq', 8, true)`);
-  await db.execute(sql`SELECT setval('users_id_seq', 19, true)`);
   await db.execute(sql`SELECT setval('tickets_id_seq', 28, true)`);
   await db.execute(sql`SELECT setval('tasks_id_seq', 19, true)`);
   await db.execute(sql`SELECT setval('notifications_id_seq', 28, true)`);

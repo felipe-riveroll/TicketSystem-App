@@ -13,7 +13,7 @@ export const auth = betterAuth({
     enabled: true,
   },
   user: {
-    modelName: "users",
+    modelName: "user",
     additionalFields: {
       role: {
         type: "string",

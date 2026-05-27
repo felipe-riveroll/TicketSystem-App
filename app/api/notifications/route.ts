@@ -27,14 +27,14 @@ export async function GET(request: NextRequest) {
   const enriched = await Promise.all(
     result.map(async (notif) => {
       const [userRow] = notif.userId
-        ? await db.select({ fullName: users.fullName, avatarIcon: users.avatarIcon }).from(users).where(eq(users.id, notif.userId)).limit(1)
+        ? await db.select({ name: users.name, avatarIcon: users.avatar_icon }).from(users).where(eq(users.id, notif.userId)).limit(1)
         : [null];
       const [teamRow] = notif.teamId
         ? await db.select({ name: teams.name, iconId: teams.iconId }).from(teams).where(eq(teams.id, notif.teamId)).limit(1)
         : [null];
       return {
         ...notif,
-        users: userRow ? { full_name: userRow.fullName, avatar_icon: userRow.avatarIcon } : null,
+        users: userRow ? { full_name: userRow.name, avatar_icon: userRow.avatarIcon } : null,
         teams: teamRow ? { name: teamRow.name, icon_id: teamRow.iconId } : null,
       };
     })
