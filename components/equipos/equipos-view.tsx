@@ -59,7 +59,7 @@ export function EquiposView() {
 
       const mappedUsers = usersData.map((u: any) => ({
         id: u.id,
-        full_name: u.fullName,
+        full_name: u.name,
         email: u.email,
         role: u.role,
         avatar_icon: u.avatarIcon,

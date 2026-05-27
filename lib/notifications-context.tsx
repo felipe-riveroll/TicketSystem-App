@@ -116,6 +116,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const res = await fetch("/api/notifications");
+      if (!res.ok) {
+        console.error("Notifications API returned", res.status);
+        return;
+      }
       const data = await res.json();
 
       const mapped: Notification[] = (data ?? []).map((row: any) => ({
@@ -128,7 +132,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         is_read: row.isRead,
         created_at: row.createdAt,
 
-        user_name: row.users?.fullName ?? "Usuario desconocido",
+        user_name: row.users?.full_name ?? "Usuario desconocido",
         team_name: row.teams?.name ?? "",
 
         user_avatar_icon: row.users?.avatarIcon ?? "Users",

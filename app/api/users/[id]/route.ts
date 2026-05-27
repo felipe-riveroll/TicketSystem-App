@@ -15,7 +15,7 @@ export async function PATCH(
   const body = await request.json();
 
   const updateData: Record<string, any> = {};
-  if (body.full_name !== undefined) updateData.fullName = body.full_name;
+  if (body.full_name !== undefined) updateData.name = body.full_name;
   if (body.email !== undefined) updateData.email = body.email;
   if (body.avatar_icon !== undefined) updateData.avatarIcon = body.avatar_icon;
   if (body.is_active !== undefined) updateData.isActive = body.is_active;
@@ -25,7 +25,7 @@ export async function PATCH(
   const [updated] = await db
     .update(users)
     .set(updateData)
-    .where(eq(users.id, Number(id)))
+    .where(eq(users.id, id))
     .returning();
 
   return NextResponse.json(updated);

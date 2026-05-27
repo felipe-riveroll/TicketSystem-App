@@ -31,8 +31,8 @@ export default async function DashboardLayout({
   }
 
   const initialUser: UserProfile = {
-    id: Number(user.id),
-    name: user.fullName ?? user.email,
+    id: user.id,
+    name: user.name ?? user.email,
     email: user.email,
     role: (user.role as UserRole) ?? "user",
     iconId: (user.avatarIcon as IconUserId) || "Users",

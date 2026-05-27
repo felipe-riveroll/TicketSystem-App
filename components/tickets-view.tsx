@@ -299,7 +299,7 @@ export function TicketsView() {
       // API returns camelCase; map back to snake_case for component usage
       const mapped = (raw ?? []).map((u: Record<string, unknown>) => ({
         id: u.id,
-        full_name: u.fullName,
+        full_name: u.name,
         avatar_icon: u.avatarIcon,
       }));
       setAreaMembers(mapped);
@@ -329,7 +329,7 @@ export function TicketsView() {
           team_id: row.teamId,
           user_id: row.userId,
           is_active: row.isActive,
-          users: row.users ? { full_name: row.users.fullName, avatar_icon: row.users.avatarIcon } : null,
+          users: row.users ? { full_name: row.users.full_name, avatar_icon: row.users.avatar_icon } : null,
           teams: row.teams ? { name: row.teams.name, icon_id: row.teams.icon_id } : null,
         }),
       );

@@ -85,7 +85,7 @@ export function useKanbanBoard() {
       setMembers(
         (data ?? []).map((u: any) => ({
           id: Number(u.id),
-          full_name: u.fullName ?? "",
+          full_name: u.name ?? "",
           avatar_icon: (u.avatarIcon as IconUserId) || "Users",
         }))
       );

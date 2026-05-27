@@ -10,6 +10,7 @@ function applyFilter<T>(query: T, isAdmin: boolean, teamId: number | undefined, 
 }
 
 export async function GET(request: NextRequest) {
+  try {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -216,4 +217,8 @@ export async function GET(request: NextRequest) {
     activeUsersComparison: { currentMonth: activeCurrentCount, previousMonth: activePreviousCount, percentChange: activePercentChange, userDifference: activeUserDiff },
     chartData,
   });
+  } catch (error) {
+    console.error("Metrics API error:", error);
+    return NextResponse.json({ error: "Failed to fetch metrics" }, { status: 500 });
+  }
 }

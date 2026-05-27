@@ -5,6 +5,7 @@ import { notifications, users, teams } from "@/lib/db/schema";
 import { eq, desc, inArray } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
+  try {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
   const enriched = await Promise.all(
     result.map(async (notif) => {
       const [userRow] = notif.userId
-        ? await db.select({ name: users.name, avatarIcon: users.avatar_icon }).from(users).where(eq(users.id, notif.userId)).limit(1)
+        ? await db.select({ name: users.name, avatarIcon: users.avatarIcon }).from(users).where(eq(users.id, String(notif.userId))).limit(1)
         : [null];
       const [teamRow] = notif.teamId
         ? await db.select({ name: teams.name, iconId: teams.iconId }).from(teams).where(eq(teams.id, notif.teamId)).limit(1)
@@ -41,6 +42,10 @@ export async function GET(request: NextRequest) {
   );
 
   return NextResponse.json(enriched);
+  } catch (error) {
+    console.error("Notifications API error:", error);
+    return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: NextRequest) {

@@ -54,14 +54,14 @@ export async function GET(request: NextRequest) {
     result.map(async (ticket) => {
       const { users, teams } = await import("@/lib/db/schema");
       const [userRow] = ticket.userId
-        ? await db.select({ fullName: users.fullName, avatarIcon: users.avatarIcon }).from(users).where(eq(users.id, ticket.userId)).limit(1)
+        ? await db.select({ name: users.name, avatarIcon: users.avatarIcon }).from(users).where(eq(users.id, String(ticket.userId))).limit(1)
         : [null];
       const [teamRow] = ticket.teamId
         ? await db.select({ name: teams.name, iconId: teams.iconId }).from(teams).where(eq(teams.id, ticket.teamId)).limit(1)
         : [null];
       return {
         ...ticket,
-        users: userRow ? { full_name: userRow.fullName, avatar_icon: userRow.avatarIcon } : null,
+        users: userRow ? { full_name: userRow.name, avatar_icon: userRow.avatarIcon } : null,
         teams: teamRow ? { name: teamRow.name, icon_id: teamRow.iconId } : null,
       };
     })

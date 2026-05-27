@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     result = await db
       .select({
         id: users.id,
-        fullName: users.fullName,
+        name: users.name,
         avatarIcon: users.avatarIcon,
       })
       .from(users)
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     result = await db
       .select({
         id: users.id,
-        fullName: users.fullName,
+        name: users.name,
         email: users.email,
         role: users.role,
         avatarIcon: users.avatarIcon,
